@@ -512,7 +512,6 @@ bool ValueNumber::writeArrayValue(Serializer &ser, UIntType num)
 //
 bool ValueNumber::writeArrayValue(Serializer &ser, IntType num)
 {
-  auto mask = num < 0;
   auto anum = std::abs(num);
 
   if (anum < (1 << 5))

@@ -459,6 +459,9 @@ public:
   ~ValueArray() override = default;
 
   //
+  void fill(NType num) { array_.fill(num); }
+
+  //
   [[nodiscard]] bool equal(const ValueInterface &other) const override
   {
     if (auto *oval = dynamic_cast<const ValueArray<NType, Size> *>(&other))

@@ -3,8 +3,12 @@
 //
 #include "record.h"
 #include "serialize.h"
+#include <chrono>
 #include <cstdint>
 #include <iostream>
+#if __APPLE__
+#include <dispatch/dispatch.h>
+#endif
 
 namespace
 {
@@ -15,6 +19,19 @@ constexpr uint32_t Day = Hour * 24;
 constexpr uint32_t Week = Day * 7;
 
 constexpr uint32_t MaxTime = Week * 2 - 1;
+
+//
+template <typename Func>
+uint64_t MeasureTime(Func func)
+{
+  using namespace std::chrono;
+  auto start = high_resolution_clock::now();
+  func();
+  auto end = high_resolution_clock::now();
+  auto duration = duration_cast<microseconds>(end - start);
+  // auto duration = duration_cast<nanoseconds>(end - start);
+  return duration.count();
+}
 
 //
 template <typename... Args>
@@ -54,6 +71,19 @@ struct Test
 
   [[nodiscard]] uint32_t version() const { return valLink.getDataVersion(); }
   [[nodiscard]] size_t size() const { return valLink.needTotalSize(); }
+  bool serialize(record::Serializer &ser) const
+  {
+    return valLink.serialize(ser);
+  }
+  bool serializeDiff(record::Serializer &ser, const Test &other) const
+  {
+    return valLink.serializeDiff(ser, other.valLink);
+  }
+  bool deserialize(record::Serializer &ser) { return valLink.deserialize(ser); }
+  bool deserializeDiff(record::Serializer &ser)
+  {
+    return valLink.deserializeDiff(ser);
+  }
 };
 
 //
@@ -80,8 +110,8 @@ int main(int argc, char **argv)
   record::Serializer ser{10 * 1000};
   record::Serializer ser2{10 * 1000};
 
-  test.valLink.serialize(ser);
-  test2.valLink.serialize(ser2);
+  test.serialize(ser);
+  test2.serialize(ser2);
   ser.terminate(0xffffffff);
   ser2.terminate(0xffffffff);
 
@@ -91,7 +121,7 @@ int main(int argc, char **argv)
   ser.reset();
   ser2.reset();
 
-  if (test.valLink.deserialize(ser2))
+  if (test.deserialize(ser2))
   {
     Printf("deserialize1 success");
   }
@@ -99,7 +129,7 @@ int main(int argc, char **argv)
   {
     Printf("deserialize1 failed");
   }
-  if (test2.valLink.deserialize(ser))
+  if (test2.deserialize(ser))
   {
     Printf("deserialize2 success");
   }
@@ -112,8 +142,44 @@ int main(int argc, char **argv)
   Printf("Name 2={}(age={})", test2.name_(), test2.age_());
 
   ser.reset();
-  test.valLink.serializeDiff(ser, test.valLink);
+  test.serializeDiff(ser, test);
   Printf("Default Diff Pack Size={}", ser.size());
+
+  std::array<TestVer2, 100> testArray{};
+  record::Serializer perfTest{1000 * 1000};
+  auto count = MeasureTime(
+      [&]()
+      {
+        for (const auto &tes : testArray)
+        {
+          if (!tes.serialize(perfTest))
+          {
+            Printf("buffer overflow");
+            break;
+          }
+        }
+      });
+  Printf("Perf(nano sec): {} size={}", count, perfTest.size());
+#if __APPLE__
+  auto jgroup = dispatch_group_create();
+  auto jqueue = dispatch_queue_create("PerfTest", DISPATCH_QUEUE_CONCURRENT);
+  count = MeasureTime(
+      [&]()
+      {
+        for (const auto &tes : testArray)
+        {
+          dispatch_group_async(jgroup, jqueue, ^{
+            record::Serializer local{1000};
+            if (!tes.serialize(local))
+            {
+              Printf("buffer overflow");
+            }
+          });
+        }
+      });
+  dispatch_group_wait(jgroup, DISPATCH_TIME_FOREVER);
+  Printf("Perf(nano sec): {}", count);
+#endif
 
   return 0;
 }

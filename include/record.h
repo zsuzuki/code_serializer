@@ -4,7 +4,9 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <list>
+#include <ratio>
 #include <string>
 #include <type_traits>
 
@@ -324,6 +326,7 @@ protected:
 template <class NType>
 class Value : public ValueNumber
 {
+protected:
   NType num_;
 
 public:
@@ -444,6 +447,47 @@ public:
   bool operator!=(NType num) { return num_ != num; }
 
   NType diff(const Value<NType> &other) { return num_ - other.num_; }
+};
+
+//
+// bitset
+//
+template <class NType>
+class ValueBits : public Value<NType>
+{
+public:
+  ValueBits(NType init, ValueLink &link) : Value<NType>(init, link) {}
+  ~ValueBits() override = default;
+
+  //
+  // bit control
+  //
+  void set(NType bit, bool flag)
+  {
+    if (sizeof(NType) * 8 <= bit)
+    {
+      return;
+    }
+
+    auto bitMask = 1 << bit;
+    if (flag)
+    {
+      Value<NType>::num_ |= bitMask;
+    }
+    else
+    {
+      Value<NType>::num_ &= ~bitMask;
+    }
+  }
+  [[nodiscard]] bool get(NType bit) const
+  {
+    if (sizeof(NType) * 8 <= bit)
+    {
+      return false;
+    }
+    auto bitMask = 1 << bit;
+    return (Value<NType>::num_ & bitMask) != 0;
+  }
 };
 
 //

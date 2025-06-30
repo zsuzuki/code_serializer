@@ -62,12 +62,14 @@ struct Test
   using vbool = record::ValueBool;
   using vsep = record::ValueVersion;
   using varray32 = record::ValueArray<uint32_t, 16>;
+  using vbits32 = record::ValueBits<uint32_t>;
 
   vbool enabled_{false, valLink};
   vuint32_t count_{0, valLink};
   vstring name_{"Namae", valLink};
   vuint8_t age_{20, valLink};
   varray32 points_{0, valLink};
+  vbits32 bits_{0, valLink};
 
   [[nodiscard]] uint32_t version() const { return valLink.getDataVersion(); }
   [[nodiscard]] size_t size() const { return valLink.needTotalSize(); }
@@ -104,8 +106,12 @@ int main(int argc, char **argv)
   test2.age_ = 25;
   test2.count_ = 100;
   test2.number_ = 1024 * 1000;
+  test2.bits_.set(5, true);
 
   Printf("Data Version 1={} 2={}", test.version(), test2.version());
+
+  Printf("  bits1: {}, {}", test.bits_.get(4), test.bits_.get(5));
+  Printf("  bits2: {}, {}", test2.bits_.get(4), test2.bits_.get(5));
 
   record::Serializer ser{10 * 1000};
   record::Serializer ser2{10 * 1000};

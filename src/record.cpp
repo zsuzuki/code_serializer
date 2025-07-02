@@ -232,8 +232,8 @@ bool ValueString::serializeDiff(Serializer &ser,
     }
     else
     {
-      // 違うのでそのまま出力
-      return serialize(ser);
+      // 違うのでotherをそのまま出力
+      return other.serialize(ser);
     }
   }
   return false;

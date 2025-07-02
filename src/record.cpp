@@ -6,8 +6,6 @@
 #include <cassert>
 #include <cstdint>
 
-#include <iostream>
-
 namespace record
 {
 
@@ -157,10 +155,11 @@ bool ValueBool::serialize(Serializer &ser) const
   return ser.writeBits(val_ ? 1 : 0, BaseBits);
 }
 //
-bool ValueBool::serializeDiff(Serializer &ser, const ValueInterface &) const
+bool ValueBool::serializeDiff(Serializer &ser,
+                              const ValueInterface &other) const
 {
-  // booleanはother関係ない
-  return serialize(ser);
+  // booleanはdiffならotherを出力
+  return other.serialize(ser);
 }
 //
 bool ValueBool::deserialize(Serializer &ser)

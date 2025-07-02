@@ -102,6 +102,7 @@ int main(int argc, char **argv)
   Test test;
   TestVer2 test2;
 
+  test2.enabled_ = true;
   test2.name_ = "Watashi";
   test2.age_ = 25;
   test2.count_ = 100;
@@ -130,6 +131,10 @@ int main(int argc, char **argv)
   ser.reset();
   ser2.reset();
 
+  test2.enabled_ = false;
+  Printf("test1 enabled: {}", test.enabled_());
+  Printf("test2 enabled: {}", test2.enabled_());
+
   if (test.deserialize(ser2))
   {
     Printf("deserialize1 success");
@@ -146,6 +151,8 @@ int main(int argc, char **argv)
   {
     Printf("deserialize2 failed");
   }
+  Printf("test1 enabled(unpacked): {}", test.enabled_());
+  Printf("test2 enabled(unpacked): {}", test2.enabled_());
 
   Printf("Name 1={}(age={})", test.name_(), test.age_());
   Printf("Name 2={}(age={})", test2.name_(), test2.age_());

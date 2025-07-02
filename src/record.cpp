@@ -230,11 +230,8 @@ bool ValueString::serializeDiff(Serializer &ser,
       // 同じなので差分無し(BaseBit<Zero>のみ出力)
       return ser.writeBits(BBZero, BaseBits);
     }
-    else
-    {
-      // 違うのでotherをそのまま出力
-      return other.serialize(ser);
-    }
+    // 違うのでotherをそのまま出力
+    return other.serialize(ser);
   }
   return false;
 }

@@ -106,12 +106,15 @@ int main(int argc, char **argv)
   test2.age_ = 25;
   test2.count_ = 100;
   test2.number_ = 1024 * 1000;
+  test.bits_ = 0x02;
   test2.bits_.set(5, true);
 
   Printf("Data Version 1={} 2={}", test.version(), test2.version());
 
-  Printf("  bits1: {}, {}", test.bits_.get(4), test.bits_.get(5));
-  Printf("  bits2: {}, {}", test2.bits_.get(4), test2.bits_.get(5));
+  for (int i = 0; i < 8; i++)
+  {
+    Printf("  bits{}: {}, {}", i, test.bits_.get(i), test2.bits_.get(i));
+  }
 
   record::Serializer ser{10 * 1000};
   record::Serializer ser2{10 * 1000};

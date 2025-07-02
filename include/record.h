@@ -6,9 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <list>
-#include <ratio>
 #include <string>
-#include <type_traits>
 
 namespace record
 {
@@ -458,6 +456,18 @@ class ValueBits : public Value<NType>
 public:
   ValueBits(NType init, ValueLink &link) : Value<NType>(init, link) {}
   ~ValueBits() override = default;
+
+  //
+  ValueBits &operator=(const ValueBits<NType> &other)
+  {
+    Value<NType>::num_ = other.num_;
+    return *this;
+  }
+  ValueBits &operator=(NType num)
+  {
+    Value<NType>::num_ = num;
+    return *this;
+  }
 
   //
   // bit control

@@ -105,6 +105,25 @@ public:
     return true;
   }
 
+  //
+  bool writeBool(bool value)
+  {
+    uint8_t valueByte = value ? 1 : 0;
+    return writeBits(valueByte, 1);
+  }
+
+  //
+  bool readBool(bool &value)
+  {
+    uint8_t resValue;
+    if (readBits(resValue, 1))
+    {
+      value = resValue != 0;
+      return true;
+    }
+    return false;
+  }
+
   // バイト書き込み(要バイトアライン)
   bool writeByte(uint8_t value)
   {

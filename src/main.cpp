@@ -120,6 +120,19 @@ int main(int argc, char **argv)
   record::Serializer ser{10 * 1000};
   record::Serializer ser2{10 * 1000};
 
+  ser.writeBool(true);
+  ser.writeBool(false);
+  ser.writeBool(true);
+  {
+    bool r1, r2, r3;
+    ser.reset();
+    ser.readBool(r1);
+    ser.readBool(r2);
+    ser.readBool(r3);
+    Printf("bool wr: {}, {}, {}", r1, r2, r3);
+  }
+  ser.reset();
+
   test.serialize(ser);
   test2.serialize(ser2);
   ser.terminate(0xffffffff);

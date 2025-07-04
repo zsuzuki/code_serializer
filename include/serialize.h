@@ -16,16 +16,61 @@ namespace record
 class Serializer
 {
   static constexpr size_t ByteBits = 8;
+  static constexpr size_t WordBytes = sizeof(uint64_t);
+  static constexpr size_t WordBits = WordBytes * ByteBits;
 
-  std::vector<uint8_t> buffer_;
+  std::vector<uint64_t> buffer_;
   size_t bufferSize_;
   size_t bitPos_;
 
 public:
-  Serializer(size_t n) : buffer_(n), bufferSize_(n * ByteBits), bitPos_(0) {}
+  Serializer(size_t n)
+      : buffer_((n + WordBytes - 1) / WordBytes),
+        bufferSize_(buffer_.size() * WordBits), bitPos_(0)
+  {
+  }
 
   // 書き込み終了(任意)
   void terminate(uint32_t mark) { writeBits(mark, sizeof(mark) * ByteBits); }
+
+  // ビット書き込み 64bit専用
+  bool writeBits64(uint64_t value, size_t bits)
+  {
+    assert(bits <= WordBits);
+    if (bitPos_ + bits > bufferSize_)
+    {
+      return false;
+    }
+
+    auto bitIndex = bitPos_ % WordBits;
+    auto *ptr = &buffer_[bitPos_ / WordBits];
+
+    if (bitIndex + bits <= WordBits)
+    {
+      // single
+      auto mask = ((1ULL << bits) - 1ULL);
+      *ptr &= ~(mask << bitIndex);
+      *ptr |= (value & mask) << bitIndex;
+    }
+    else
+    {
+      // double
+      auto bits1 = WordBits - bitIndex;
+      auto bits2 = bits - bits1;
+
+      auto mask1 = ((1ULL << bits1) - 1ULL);
+      auto mask2 = ((1ULL << bits2) - 1ULL);
+
+      *ptr &= ~(mask1 << bitIndex);
+      *ptr |= (value & mask1) << bitIndex;
+      ptr++;
+      *ptr &= ~mask2;
+      *ptr |= (value >> bits1) & mask2;
+    }
+
+    bitPos_ += bits;
+    return true;
+  }
 
   // ビット書き込み
   template <class NumType>
@@ -49,25 +94,46 @@ public:
         value &= ~(1 << (bits - 1));
       }
     }
+    return writeBits64(uint64_t(value), bits);
+  }
 
-    for (size_t i = 0; i < bits; ++i)
+  // ビット読み込み 64bit専用
+  bool readBits64(uint64_t &value, size_t bits)
+  {
+    assert(bits <= WordBits);
+    if (bitPos_ + bits > bufferSize_)
     {
-      size_t byteIndex = bitPos_ / ByteBits;
-      size_t bitIndex = bitPos_ % ByteBits;
-
-      uint8_t bit = (value >> i) & 1;
-      if (bit)
-      {
-        buffer_[byteIndex] |= (1 << bitIndex);
-      }
-      else
-      {
-        buffer_[byteIndex] &= ~(1 << bitIndex);
-      }
-
-      ++bitPos_;
+      return false;
     }
 
+    auto bitIndex = bitPos_ % WordBits;
+    auto *ptr = &buffer_[bitPos_ / WordBits];
+
+    if (bitIndex + bits <= WordBits)
+    {
+      // single
+      auto mask = ((1ULL << bits) - 1ULL);
+      value = (*ptr >> bitIndex) & mask;
+    }
+    else
+    {
+      // double
+      auto bits1 = WordBits - bitIndex;
+      auto bits2 = bits - bits1;
+
+      auto mask1 = ((1ULL << bits1) - 1ULL);
+      auto mask2 = ((1ULL << bits2) - 1ULL);
+
+      // value = (*ptr >> bitIndex) & mask1;
+      // ptr++;
+      // value |= (*ptr & mask2) << bits1;
+      auto val1 = (*ptr >> bitIndex) & mask1;
+      ptr++;
+      auto val2 = (*ptr & mask2) << bits1;
+      value = val1 | val2;
+    }
+
+    bitPos_ += bits;
     return true;
   }
 
@@ -75,42 +141,26 @@ public:
   template <class NumType>
   bool readBits(NumType &value, size_t bits)
   {
-    assert(bits <= sizeof(NumType) * ByteBits);
-    if (bitPos_ + bits > bufferSize_)
+    uint64_t tempValue = 0;
+    if (readBits64(tempValue, bits))
     {
-      return false;
-    }
-
-    value = 0;
-    for (size_t i = 0; i < bits; ++i)
-    {
-      size_t byteIndex = bitPos_ / ByteBits;
-      size_t bitIndex = bitPos_ % ByteBits;
-
-      uint8_t bit = (buffer_[byteIndex] >> bitIndex) & 1;
-      value |= (static_cast<NumType>(bit) << i);
-
-      ++bitPos_;
-    }
-    if constexpr (std::is_signed_v<NumType>)
-    {
-      auto mask = (1 << (bits - 1));
-      if (value & mask)
+      value = tempValue;
+      if constexpr (std::is_signed_v<NumType>)
       {
-        value &= ~mask;
-        value = -value;
+        auto mask = (1 << (bits - 1));
+        if (value & mask)
+        {
+          value &= ~mask;
+          value = -value;
+        }
       }
+      return true;
     }
-
-    return true;
+    return false;
   }
 
   //
-  bool writeBool(bool value)
-  {
-    uint8_t valueByte = value ? 1 : 0;
-    return writeBits(valueByte, 1);
-  }
+  bool writeBool(bool value) { return writeBits<uint8_t>(value ? 1 : 0, 1); }
 
   //
   bool readBool(bool &value)
@@ -175,7 +225,7 @@ public:
   size_t tell() const { return bitPos_; }
 
   // 先頭ポインタ取得
-  [[nodiscard]] const uint8_t *data() const { return buffer_.data(); }
+  [[nodiscard]] const void *data() const { return buffer_.data(); }
 
   // 保持データーサイズ(バイト数)
   [[nodiscard]] size_t size() const

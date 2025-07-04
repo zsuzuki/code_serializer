@@ -70,6 +70,7 @@ struct Test
   vuint8_t age_{20, valLink};
   varray32 points_{0, valLink};
   vbits32 bits_{0, valLink};
+  vint16_t code_{-2, valLink};
 
   [[nodiscard]] uint32_t version() const { return valLink.getDataVersion(); }
   [[nodiscard]] size_t size() const { return valLink.needTotalSize(); }
@@ -167,8 +168,8 @@ int main(int argc, char **argv)
   Printf("test1 enabled(unpacked): {}", test.enabled_());
   Printf("test2 enabled(unpacked): {}", test2.enabled_());
 
-  Printf("Name 1={}(age={})", test.name_(), test.age_());
-  Printf("Name 2={}(age={})", test2.name_(), test2.age_());
+  Printf("Name 1={}(age={})/{}", test.name_(), test.age_(), test.code_());
+  Printf("Name 2={}(age={})/{}", test2.name_(), test2.age_(), test2.code_());
 
   ser.reset();
   test.serializeDiff(ser, test);

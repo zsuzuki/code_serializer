@@ -175,41 +175,61 @@ int main(int argc, char **argv)
   test.serializeDiff(ser, test);
   Printf("Default Diff Pack Size={}", ser.size());
 
-  std::array<TestVer2, 100> testArray{};
-  record::Serializer perfTest{1000 * 1000};
-  auto count = MeasureTime(
-      [&]()
-      {
-        for (const auto &tes : testArray)
+  if (argc < 2)
+  {
+    return 0;
+  }
+
+  std::string arg0 = argv[1];
+  if (arg0 == "-bench")
+  {
+    //
+    // bench mark
+    //
+    std::array<TestVer2, 100> testArray{};
+    record::Serializer perfTest{1000 * 1000};
+    auto count = MeasureTime(
+        [&]()
         {
-          if (!tes.serialize(perfTest))
+          for (int i = 0; i < 2000; i++)
           {
-            Printf("buffer overflow");
-            break;
-          }
-        }
-      });
-  Printf("Perf(nano sec): {} size={}", count, perfTest.size());
-#if __APPLE__
-  auto jgroup = dispatch_group_create();
-  auto jqueue = dispatch_queue_create("PerfTest", DISPATCH_QUEUE_CONCURRENT);
-  count = MeasureTime(
-      [&]()
-      {
-        for (const auto &tes : testArray)
-        {
-          dispatch_group_async(jgroup, jqueue, ^{
-            record::Serializer local{1000};
-            if (!tes.serialize(local))
+            perfTest.reset();
+            for (const auto &tes : testArray)
             {
-              Printf("buffer overflow");
+              if (!tes.serialize(perfTest))
+              {
+                Printf("buffer overflow");
+                break;
+              }
             }
-          });
-        }
-      });
-  dispatch_group_wait(jgroup, DISPATCH_TIME_FOREVER);
-  Printf("Perf(nano sec): {}", count);
+          }
+        });
+    Printf("Perf(nano sec): {} size={}", count, perfTest.size());
+#if __APPLE__
+    auto jgroup = dispatch_group_create();
+    auto jqueue = dispatch_queue_create("PerfTest", DISPATCH_QUEUE_CONCURRENT);
+    count = MeasureTime(
+        [&]()
+        {
+          for (int i = 0; i < 2000; i++)
+          {
+            perfTest.reset();
+            for (const auto &tes : testArray)
+            {
+              dispatch_group_async(jgroup, jqueue, ^{
+                record::Serializer local{1000};
+                if (!tes.serialize(local))
+                {
+                  Printf("buffer overflow");
+                }
+              });
+            }
+          }
+        });
+    dispatch_group_wait(jgroup, DISPATCH_TIME_FOREVER);
+    Printf("Perf(nano sec): {}", count);
 #endif
+  }
 
   return 0;
 }

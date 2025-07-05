@@ -406,12 +406,21 @@ bool readArrayNumber(Serializer &ser, NumType &num)
 //
 bool ValueNumber::writeNumber(Serializer &ser, UIntType num, size_t bits)
 {
+  auto halfBit = bits >> 1;
+  if (num < (1 << halfBit))
+  {
+    // 値が小さいならより少ないビット数にする
+    auto quarterBit = halfBit >> 1;
+    bits = num < (1 << quarterBit) ? quarterBit : halfBit;
+  }
   return writeNumberImpl(ser, num, bits);
 }
 
 //
 bool ValueNumber::writeNumber(Serializer &ser, IntType num, size_t bits)
 {
+  // 符号付きは残念ながら最上位ビットが使用されるので、そのまま出力
+  // 出来る限り符号無しを使うほうがよい
   return writeNumberImpl(ser, num, bits);
 }
 

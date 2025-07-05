@@ -4,7 +4,6 @@
 #pragma once
 
 #include <cassert>
-#include <type_traits>
 #include <vector>
 
 namespace record
@@ -124,13 +123,9 @@ public:
       auto mask1 = ((1ULL << bits1) - 1ULL);
       auto mask2 = ((1ULL << bits2) - 1ULL);
 
-      // value = (*ptr >> bitIndex) & mask1;
-      // ptr++;
-      // value |= (*ptr & mask2) << bits1;
-      auto val1 = (*ptr >> bitIndex) & mask1;
+      value = (*ptr >> bitIndex) & mask1;
       ptr++;
-      auto val2 = (*ptr & mask2) << bits1;
-      value = val1 | val2;
+      value |= (*ptr & mask2) << bits1;
     }
 
     bitPos_ += bits;
@@ -175,29 +170,18 @@ public:
   }
 
   // バイト書き込み(要バイトアライン)
-  bool writeByte(uint8_t value)
-  {
-    assert(bitPos_ % ByteBits == 0);
-    if (bitPos_ + ByteBits > bufferSize_)
-    {
-      return false;
-    }
-    buffer_[bitPos_ / ByteBits] = value;
-    bitPos_ += ByteBits;
-    return true;
-  }
+  bool writeByte(uint8_t value) { return writeBits64(value, ByteBits); }
 
   // バイト読み込み(要バイトアライン)
   bool readByte(uint8_t &value)
   {
-    assert(bitPos_ % ByteBits == 0);
-    if (bitPos_ + ByteBits > bufferSize_)
+    uint64_t readValue;
+    if (readBits64(readValue, ByteBits))
     {
-      return false;
+      value = readValue;
+      return true;
     }
-    value = buffer_[bitPos_ / ByteBits];
-    bitPos_ += ByteBits;
-    return true;
+    return false;
   }
 
   // バイトにそろえる

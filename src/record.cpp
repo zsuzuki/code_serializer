@@ -207,8 +207,6 @@ bool ValueString::serialize(Serializer &ser) const
     return true;
   }
 
-  // 文字列はバイト単位にそろえ直す
-  ser.padToNext();
   for (auto byte : val_)
   {
     if (!ser.writeByte(byte))
@@ -259,7 +257,7 @@ bool ValueString::deserialize(Serializer &ser)
     // 空なので終了
     return true;
   }
-  ser.alignByte();
+
   for (int i = 0; i < bytes; i++)
   {
     uint8_t value;

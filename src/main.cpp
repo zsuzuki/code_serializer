@@ -191,7 +191,7 @@ int main(int argc, char **argv)
     auto count = MeasureTime(
         [&]()
         {
-          for (int i = 0; i < 2000; i++)
+          for (int i = 0; i < 10000; i++)
           {
             perfTest.reset();
             for (const auto &tes : testArray)

@@ -300,7 +300,6 @@ bool ValueString::deserializeDiff(Serializer &ser)
     // 空なので終了
     return true;
   }
-  ser.alignByte();
   for (int i = 0; i < bytes; i++)
   {
     uint8_t value;

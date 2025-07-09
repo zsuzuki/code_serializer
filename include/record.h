@@ -375,7 +375,15 @@ public:
       }
       else
       {
-        UIntType diff = oval->num_ - num_;
+        UIntType diff;
+        if (oval->num_ >= num_)
+        {
+          diff = (oval->num_ - num_) << 1ULL;
+        }
+        else
+        {
+          diff = (num_ - oval->num_) << 1ULL | 1ULL;
+        }
         return writeNumber(ser, diff, sizeof(NType) * ByteBits);
       }
     }
@@ -419,7 +427,14 @@ public:
       UIntType diff;
       if (readNumber(ser, diff))
       {
-        num_ += diff;
+        if (diff & 1)
+        {
+          num_ -= diff >> 1ULL;
+        }
+        else
+        {
+          num_ += diff >> 1ULL;
+        }
         return true;
       }
     }
@@ -590,7 +605,17 @@ public:
         }
         else
         {
-          UIntType diff = oval->at(i) - at(i);
+          UIntType diff;
+          auto dst = oval->at(i);
+          auto src = at(i);
+          if (dst >= src)
+          {
+            diff = (dst - src) << 1ULL;
+          }
+          else
+          {
+            diff = (src - dst) << 1ULL | 1ULL;
+          }
           if (!writeArrayValue(ser, diff))
           {
             return false;
@@ -664,7 +689,14 @@ public:
         {
           return false;
         }
-        item += val;
+        if (val & 1)
+        {
+          item -= val >> 1ULL;
+        }
+        else
+        {
+          item += val >> 1ULL;
+        }
       }
     }
     return true;

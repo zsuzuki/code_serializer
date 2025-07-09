@@ -332,7 +332,7 @@ bool writeNumberImpl(Serializer &ser, NumType num, size_t bits)
   {
     return false;
   }
-  if (!ser.writeBits(bits, ValueInterface::SizeBits))
+  if (!ser.writeBits(bits >> 1ULL, ValueInterface::SizeBits))
   {
     return false;
   }
@@ -370,7 +370,7 @@ bool readNumberImpl(Serializer &ser, NumType &num)
     return false;
   }
 
-  return ser.readBits(num, bits);
+  return ser.readBits(num, bits << 1ULL);
 }
 // read array
 template <class NumType>

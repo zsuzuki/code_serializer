@@ -65,7 +65,7 @@ struct Test
   using vbits32 = record::ValueBits<uint32_t>;
 
   vbool enabled_{false, valLink};
-  vuint32_t count_{0, valLink};
+  vuint32_t count_{1000, valLink};
   vstring name_{"Namae", valLink};
   vuint8_t age_{20, valLink};
   varray32 points_{0, valLink};
@@ -171,9 +171,28 @@ int main(int argc, char **argv)
   Printf("Name 1={}(age={})/{}", test.name_(), test.age_(), test.code_());
   Printf("Name 2={}(age={})/{}", test2.name_(), test2.age_(), test2.code_());
 
-  ser.reset();
-  test.serializeDiff(ser, test);
-  Printf("Default Diff Pack Size={}", ser.size());
+  {
+    Test diff;
+
+    ser.reset();
+    if (diff.serializeDiff(ser, test))
+    {
+      Printf("Default Diff Pack Size={}", ser.size());
+    }
+    else
+    {
+      Printf("Diff serialize failed.");
+    }
+    Printf("  Pre  Name D={}(age={})/{}/cnt:{}", diff.name_(), diff.age_(),
+           diff.code_(), diff.count_());
+
+    ser.reset();
+    if (diff.deserializeDiff(ser))
+    {
+      Printf("  Post Name D={}(age={})/{}/cnt:{}", diff.name_(), diff.age_(),
+             diff.code_(), diff.count_());
+    }
+  }
 
   if (argc < 2)
   {

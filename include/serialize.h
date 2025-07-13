@@ -44,7 +44,11 @@ public:
     auto bitIndex = bitPos_ % WordBits;
     auto *ptr = &buffer_[bitPos_ / WordBits];
 
-    if (bitIndex + bits <= WordBits)
+    if (bits == WordBits && bitIndex == 0)
+    {
+      *ptr = value;
+    }
+    else if (bitIndex + bits <= WordBits)
     {
       // single
       auto mask = ((1ULL << bits) - 1ULL);
@@ -108,7 +112,11 @@ public:
     auto bitIndex = bitPos_ % WordBits;
     auto *ptr = &buffer_[bitPos_ / WordBits];
 
-    if (bitIndex + bits <= WordBits)
+    if (bitIndex == 0 && bits == WordBits)
+    {
+      value = *ptr;
+    }
+    else if (bitIndex + bits <= WordBits)
     {
       // single
       auto mask = ((1ULL << bits) - 1ULL);

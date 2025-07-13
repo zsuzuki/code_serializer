@@ -10,6 +10,8 @@
 #include <dispatch/dispatch.h>
 #endif
 
+#include "record_bits.h"
+
 namespace
 {
 constexpr uint32_t Sec = 1000;
@@ -94,6 +96,23 @@ struct TestVer2 : public Test
 {
   vsep ver_1{valLink};
   vuint32_t number_{100, valLink};
+};
+
+//
+struct Bit1
+{
+  uint64_t enable_ : 1;
+  uint64_t count_ : 20;
+  uint64_t number_ : 10;
+  uint64_t hour_ : 5;
+  uint64_t min_ : 6;
+  uint64_t sec_ : 6;
+  uint64_t month_ : 4;
+  uint64_t day_ : 5;
+};
+struct Bit2 : public Bit1
+{
+  uint64_t year_ : 12;
 };
 
 } // namespace
@@ -194,6 +213,63 @@ int main(int argc, char **argv)
     }
   }
 
+  //
+  // bit field pack/unpack
+  //
+  std::array<Bit1, 10> bittest1{};
+  std::array<Bit2, 8> bittest2{};
+
+  for (int i = 0; i < bittest1.size(); i++)
+  {
+    auto &btt1 = bittest1[i];
+    btt1.enable_ = i & 1;
+    btt1.count_ = 100 + i;
+    btt1.number_ = 22;
+    btt1.hour_ = 15;
+    btt1.min_ = 41;
+    btt1.sec_ = 5;
+    btt1.month_ = i + 1;
+    btt1.day_ = 13;
+  }
+  for (int i = 0; i < bittest2.size(); i++)
+  {
+    auto &btt2 = bittest2[i];
+    btt2.hour_ = i;
+    btt2.year_ = 2020 + i;
+  }
+  record::Serializer bser{100 * 100};
+  // より大きい構造体へのアンパック
+  bser.reset();
+  record::serializeBitField(bser, bittest1.data(), bittest1.size());
+  bser.reset();
+  size_t brnum = bittest2.size();
+  record::deserializeBitField(bser, bittest2.data(), brnum);
+  Printf("---: {}", brnum);
+  for (int i = 0; i < bittest2.size(); i++)
+  {
+    auto &btt = bittest2[i];
+    Printf("{}: e={}, h={}, m={}, y={}", (int)btt.count_, (int)btt.enable_,
+           (int)btt.hour_, (int)btt.month_, (int)btt.year_);
+    btt.count_ = i + 1000;
+    btt.hour_ = i * 2 + 1;
+    btt.number_ = 16;
+  }
+  // より小さい構造体へのアンパック
+  bser.reset();
+  record::serializeBitField(bser, bittest2.data(), bittest2.size());
+  bser.reset();
+  brnum = bittest1.size();
+  record::deserializeBitField(bser, bittest1.data(), brnum);
+  Printf("---: {}", brnum);
+  for (const auto &btt : bittest1)
+  {
+    Printf("{}: e={}, h={}, m={}, num={}", (int)btt.count_, (int)btt.enable_,
+           (int)btt.hour_, (int)btt.month_, (int)btt.number_);
+  }
+
+  //
+  // option execute
+  //
   if (argc < 2)
   {
     return 0;

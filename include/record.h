@@ -4,7 +4,6 @@
 #pragma once
 
 #include <array>
-#include <cstdint>
 #include <list>
 #include <string>
 
@@ -31,8 +30,10 @@ public:
   // = 0 -> array(next byte = array size)
   // 単体で保存できるのはSizeBitsバイト(6なら63バイト)まで
   static constexpr size_t SizeBits = 6;
-  //
+  // 1 byte
   static constexpr size_t ByteBits = 8;
+  // array size descriptor
+  static constexpr size_t ArraySizeBits = 3;
 
 public:
   ValueInterface() = default;
@@ -65,6 +66,8 @@ public:
 class ValueLink
 {
   std::list<ValueInterface *> list_;
+
+  bool checkTerminate(Serializer &ser);
 
 public:
   ValueLink() = default;
@@ -133,14 +136,15 @@ public:
   // 必要ビットサイズ
   [[nodiscard]] size_t getTotalBitSize() const
   {
-    size_t bitSize = 0;
+    size_t bitSize = ValueInterface::BaseBits;
     for (const auto &val : list_)
     {
       bitSize += ValueInterface::BaseBits;
       if (!val->isBool() && !val->isSeparator())
       {
         bitSize += ValueInterface::SizeBits;
-        auto singleSize = val->getByteSize() * ValueInterface::ByteBits;
+        auto singleSize = (val->getByteSize() + ValueInterface::ArraySizeBits) *
+                          ValueInterface::ByteBits;
         auto numarray = val->getArraySize();
         bitSize += numarray * singleSize;
         if (numarray > 1)
@@ -232,8 +236,8 @@ public:
     val_ = val;
     return val;
   }
-  bool operator==(bool val) { return val_ == val; }
-  bool operator!=(bool val) { return val_ != val; }
+  bool operator==(bool val) const { return val_ == val; }
+  bool operator!=(bool val) const { return val_ != val; }
 };
 
 //
@@ -289,8 +293,8 @@ public:
     val_ = value;
     return *this;
   }
-  bool operator==(const ValueString &other) { return val_ == other.val_; }
-  bool operator!=(const ValueString &other) { return !(*this == other); }
+  bool operator==(const ValueString &other) const { return val_ == other.val_; }
+  bool operator!=(const ValueString &other) const { return !(*this == other); }
 };
 
 //
@@ -375,15 +379,12 @@ public:
       }
       else
       {
-        UIntType diff;
         if (oval->num_ >= num_)
         {
-          diff = (oval->num_ - num_) << 1ULL;
+          UIntType diff = (oval->num_ - num_) << 1ULL;
+          return writeNumber(ser, diff, sizeof(NType) * ByteBits);
         }
-        else
-        {
-          diff = (num_ - oval->num_) << 1ULL | 1ULL;
-        }
+        UIntType diff = (num_ - oval->num_) << 1ULL | 1ULL;
         return writeNumber(ser, diff, sizeof(NType) * ByteBits);
       }
     }
@@ -454,12 +455,15 @@ public:
     num_ = num;
     return *this;
   }
-  bool operator==(const Value<NType> &other) { return num_ == other.num_; }
-  bool operator==(NType num) { return num_ == num; }
-  bool operator!=(const Value<NType> &other) { return !(this == other); }
-  bool operator!=(NType num) { return num_ != num; }
+  bool operator==(const Value<NType> &other) const
+  {
+    return num_ == other.num_;
+  }
+  bool operator==(NType num) const { return num_ == num; }
+  bool operator!=(const Value<NType> &other) const { return !(*this == other); }
+  bool operator!=(NType num) const { return num_ != num; }
 
-  NType diff(const Value<NType> &other) { return num_ - other.num_; }
+  NType diff(const Value<NType> &other) const { return num_ - other.num_; }
 };
 
 //
@@ -494,7 +498,7 @@ public:
       return;
     }
 
-    auto bitMask = 1 << bit;
+    NType bitMask = 1ULL << bit;
     if (flag)
     {
       Value<NType>::num_ |= bitMask;
@@ -526,9 +530,6 @@ class ValueArray : public ValueNumber
 public:
   ValueArray(NType init, ValueLink &link) : array_{init} { link.add(this); }
   ~ValueArray() override = default;
-
-  //
-  void fill(NType num) { array_.fill(num); }
 
   //
   [[nodiscard]] bool equal(const ValueInterface &other) const override
@@ -606,15 +607,15 @@ public:
         else
         {
           UIntType diff;
-          auto dst = oval->at(i);
-          auto src = at(i);
-          if (dst >= src)
+          auto dstVal = oval->at(i);
+          auto val = at(i);
+          if (dstVal >= val)
           {
-            diff = (dst - src) << 1ULL;
+            diff = (dstVal - val) << 1ULL;
           }
           else
           {
-            diff = (src - dst) << 1ULL | 1ULL;
+            diff = (val - dstVal) << 1ULL | 1ULL;
           }
           if (!writeArrayValue(ser, diff))
           {
@@ -705,8 +706,13 @@ public:
   //
   static constexpr size_t size() { return Size; }
   //
-  NType at(size_t index) const { return array_.at(index); }
+  NType &at(size_t index) { return array_.at(index); }
+  const NType &at(size_t index) const { return array_.at(index); }
+  [[nodiscard]] NType get(size_t index) const { return array_.at(index); }
   void set(size_t index, NType num = 0) { array_.at(index) = num; }
+  void fill(NType num = 0) { array_.fill(num); }
+  NType *data() { return array_.data(); }
+  const NType *data() const { return array_.data(); }
 };
 
 } // namespace record

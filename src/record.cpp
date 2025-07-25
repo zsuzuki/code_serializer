@@ -3,11 +3,36 @@
 //
 #include "record.h"
 #include "serialize.h"
-#include <cassert>
+#include <cstddef>
 #include <cstdint>
 
 namespace record
 {
+
+namespace
+{
+
+//
+// データ先頭2bitの種別
+//
+// BaseBit(BB)
+[[maybe_unused]] constexpr uint32_t BBZero = 0x0;    // 0/false/finish
+[[maybe_unused]] constexpr uint32_t BBOne = 0x1;     // 1/true
+[[maybe_unused]] constexpr uint32_t BBVersion = 0x2; // version separator
+[[maybe_unused]] constexpr uint32_t BBOther = 0x3;   // data
+
+} // namespace
+
+//
+// 終端チェック
+//
+bool ValueLink::checkTerminate(Serializer &ser)
+{
+  uint32_t term = BBZero;
+  bool ret = ser.readBits(term, ValueInterface::BaseBits);
+  // ここでも未来バージョンのチェックしたほうが良いか？
+  return ret ? term == BBZero : false;
+}
 
 //
 // 丸ごと保存
@@ -24,7 +49,7 @@ bool ValueLink::serialize(Serializer &ser) const
       return false;
     }
   }
-  return true;
+  return ser.writeBits(BBZero, ValueInterface::BaseBits); // terminate
 }
 
 //
@@ -49,7 +74,7 @@ bool ValueLink::serializeDiff(Serializer &ser, const ValueLink &other) const
       return false;
     }
   }
-  return true;
+  return ser.writeBits(BBZero, ValueInterface::BaseBits); // terminate
 }
 
 //
@@ -68,14 +93,14 @@ bool ValueLink::deserialize(Serializer &ser)
         // セパレータ(バージョン区切り)なら
         // 過去バージョン(=正常終了)
         ser.seek(prevPos);
-        return true;
+        break;
       }
       // 失敗したのでポインタもどす
       ser.seek(begPos);
       return false;
     }
   }
-  return true;
+  return checkTerminate(ser);
 }
 
 //
@@ -94,28 +119,19 @@ bool ValueLink::deserializeDiff(Serializer &ser)
         // セパレータ(バージョン区切り)なら
         // 過去バージョン(=正常終了)
         ser.seek(prevPos);
-        return true;
+        break;
       }
       // 失敗したのでポインタもどす
       ser.seek(begPos);
       return false;
     }
   }
-  return true;
+  return checkTerminate(ser);
 }
 
 //
 // クラス別シリアライザ
 //
-namespace
-{
-// BaseBit(BB)
-constexpr uint32_t BBZero = 0x0;
-constexpr uint32_t BBOne = 0x1;
-constexpr uint32_t BBVersion = 0x2;
-constexpr uint32_t BBOther = 0x3;
-
-} // namespace
 
 //
 // バージョンセパレータ
@@ -158,9 +174,10 @@ bool ValueBool::serialize(Serializer &ser) const
 bool ValueBool::serializeDiff(Serializer &ser,
                               const ValueInterface &other) const
 {
-  // booleanはdiffならotherを出力
+  // booleanはotherを出力
   return other.serialize(ser);
 }
+//
 //
 bool ValueBool::deserialize(Serializer &ser)
 {
@@ -207,6 +224,7 @@ bool ValueString::serialize(Serializer &ser) const
     return true;
   }
 
+  // 文字列はバイト単位にそろえ直す
   for (auto byte : val_)
   {
     if (!ser.writeByte(byte))
@@ -221,14 +239,14 @@ bool ValueString::serialize(Serializer &ser) const
 bool ValueString::serializeDiff(Serializer &ser,
                                 const ValueInterface &other) const
 {
-  if (auto *oval = dynamic_cast<const ValueString *>(&other))
+  if (const auto *oval = dynamic_cast<const ValueString *>(&other))
   {
     if (val_ == oval->val_)
     {
       // 同じなので差分無し(BaseBit<Zero>のみ出力)
       return ser.writeBits(BBZero, BaseBits);
     }
-    // 違うのでotherをそのまま出力
+    // 違うのでそのまま出力
     return other.serialize(ser);
   }
   return false;
@@ -257,8 +275,7 @@ bool ValueString::deserialize(Serializer &ser)
     // 空なので終了
     return true;
   }
-
-  for (int i = 0; i < bytes; i++)
+  for (size_t i = 0; i < bytes; i++)
   {
     uint8_t value;
     if (!ser.readByte(value))
@@ -300,7 +317,7 @@ bool ValueString::deserializeDiff(Serializer &ser)
     // 空なので終了
     return true;
   }
-  for (int i = 0; i < bytes; i++)
+  for (size_t i = 0; i < bytes; i++)
   {
     uint8_t value;
     if (!ser.readByte(value))
@@ -369,36 +386,28 @@ bool readNumberImpl(Serializer &ser, NumType &num)
     // 配列だった
     return false;
   }
-
   return ser.readBits(num, bits << 1ULL);
 }
+
+namespace
+{
+
+// array bits
+std::array<uint64_t, 8> arrayBitList = {2, 4, 8, 16, 24, 32, 48, 64};
+
+} // namespace
+
 // read array
 template <class NumType>
 bool readArrayNumber(Serializer &ser, NumType &num)
 {
   uint64_t type;
-  if (!ser.readBits(type, 2))
+  if (!ser.readBits(type, ValueInterface::ArraySizeBits))
   {
     return false;
   }
 
-  bool result = false;
-  switch (type)
-  {
-  case 0x0: // 6bit
-    result = ser.readBits(num, 6);
-    break;
-  case 0x1: // 14bit
-    result = ser.readBits(num, 14);
-    break;
-  case 0x2: // 30bit
-    result = ser.readBits(num, 30);
-    break;
-  case 0x3: // 62bit
-    result = ser.readBits(num, 62);
-    break;
-  }
-  return result;
+  return ser.readBits(num, arrayBitList[type]);
 }
 
 } // namespace
@@ -406,12 +415,12 @@ bool readArrayNumber(Serializer &ser, NumType &num)
 //
 bool ValueNumber::writeNumber(Serializer &ser, UIntType num, size_t bits)
 {
-  auto halfBit = bits >> 1;
-  if (num < (1 << halfBit))
+  auto halfBit = bits >> 1ULL;
+  if (num < (1ULL << halfBit))
   {
     // 値が小さいならより少ないビット数にする
-    auto quarterBit = halfBit >> 1;
-    bits = num < (1 << quarterBit) ? quarterBit : halfBit;
+    auto quarterBit = halfBit >> 1ULL;
+    bits = num < (1ULL << quarterBit) ? quarterBit : halfBit;
   }
   return writeNumberImpl(ser, num, bits);
 }
@@ -419,8 +428,6 @@ bool ValueNumber::writeNumber(Serializer &ser, UIntType num, size_t bits)
 //
 bool ValueNumber::writeNumber(Serializer &ser, IntType num, size_t bits)
 {
-  // 符号付きは残念ながら最上位ビットが使用されるので、そのまま出力
-  // 出来る限り符号無しを使うほうがよい
   return writeNumberImpl(ser, num, bits);
 }
 
@@ -476,37 +483,24 @@ bool ValueNumber::readArrayHeader(Serializer &ser, size_t &num)
 //
 bool ValueNumber::writeArrayValue(Serializer &ser, UIntType num)
 {
-  if (num < (1 << 6))
+  for (uint64_t idx = 0; idx < arrayBitList.size() - 1; idx++)
   {
-    // total 8bits
-    if (ser.writeBits((uint8_t)0, 2))
+    auto bits = arrayBitList[idx];
+    if (num < (1ULL << bits))
     {
-      return ser.writeBits(num, 6);
+      if (!ser.writeBits(idx, ValueInterface::ArraySizeBits))
+      {
+        // failed
+        return false;
+      }
+      // success
+      return ser.writeBits(num, bits);
     }
-    return false;
   }
-  if (num < (1 << 14))
+  // 64bits
+  if (ser.writeBits(7, ValueInterface::ArraySizeBits))
   {
-    // total 16bits
-    if (ser.writeBits((uint8_t)1, 2))
-    {
-      return ser.writeBits(num, 14);
-    }
-    return false;
-  }
-  if (num < (1 << 30))
-  {
-    // total 32bits
-    if (ser.writeBits((uint8_t)2, 2))
-    {
-      return ser.writeBits(num, 30);
-    }
-    return false;
-  }
-  // 64bitsフルは使えない62bitsまで
-  if (ser.writeBits((uint8_t)3, 2))
-  {
-    return ser.writeBits(num, 62);
+    return ser.writeBits(num, 64);
   }
   return false;
 }
@@ -516,37 +510,24 @@ bool ValueNumber::writeArrayValue(Serializer &ser, IntType num)
 {
   auto anum = std::abs(num);
 
-  if (anum < (1 << 5))
+  for (uint64_t idx = 0; idx < arrayBitList.size() - 1; idx++)
   {
-    // total 8bits
-    if (ser.writeBits((uint8_t)0, 2))
+    auto bits = arrayBitList[idx];
+    if (anum < (1ULL << (bits - 1)))
     {
-      return ser.writeBits(num, 6);
+      if (!ser.writeBits(idx, ValueInterface::ArraySizeBits))
+      {
+        // failed
+        return false;
+      }
+      // success
+      return ser.writeBits(num, bits);
     }
-    return false;
   }
-  if (anum < (1 << 13))
+  // 64bits
+  if (ser.writeBits(7, ValueInterface::ArraySizeBits))
   {
-    // total 16bits
-    if (ser.writeBits((uint8_t)1, 2))
-    {
-      return ser.writeBits(num, 14);
-    }
-    return false;
-  }
-  if (anum < (1 << 29))
-  {
-    // total 32bits
-    if (ser.writeBits((uint8_t)2, 2))
-    {
-      return ser.writeBits(num, 30);
-    }
-    return false;
-  }
-  if (ser.writeBits((uint8_t)3, 2))
-  {
-    // 64bitsフルは使えない61bitsまで
-    return ser.writeBits(num, 62);
+    return ser.writeBits(num, 64);
   }
   return false;
 }

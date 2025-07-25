@@ -9,6 +9,9 @@
 namespace record
 {
 
+// シリアライズで先頭に付加されるヘッダーデータのサイズ
+static constexpr size_t BitFieldHeaderSize = (3 + 13) / 8;
+
 //
 // data: 書き込むデータのポインタ
 // num: dataの要素数
@@ -17,6 +20,7 @@ template <class BitClass>
 bool serializeBitField(Serializer &ser, BitClass *data, size_t num)
 {
   static_assert(sizeof(BitClass) % 4 == 0, "need 4 byte align");
+  static_assert(sizeof(BitClass) <= 32, "limit 32 bytes");
 
   if (!ser.writeBits(sizeof(BitClass) / 4 - 1, 3))
   {
@@ -120,6 +124,7 @@ bool deserializeBitField(Serializer &ser, BitClass *data, size_t &num)
   };
   DataPtr dptr;
   dptr.data_ = data;
+
   for (size_t i = 0; i < num; i++)
   {
     for (size_t p = 0; p < readSize; p++)

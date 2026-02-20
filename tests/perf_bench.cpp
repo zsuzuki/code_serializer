@@ -225,8 +225,11 @@ int main()
   const auto serDiff = runSerializeDiffBench(base, next);
   const auto des = runDeserializeBench(base);
   const auto desDiff = runDeserializeDiffBench(base, next);
+  const size_t rawStructBytes = sizeof(TestVer2) * kItemCount;
 
   std::cout << std::format("items={} iterations={}\n", kItemCount, kIterations);
+  std::cout << std::format("struct(TestVer2) size={} bytes\n", sizeof(TestVer2));
+  std::cout << std::format("raw struct total size={} bytes\n", rawStructBytes);
   printResult(ser);
   printResult(serDiff);
   printResult(des);
@@ -234,6 +237,12 @@ int main()
 
   const auto ratio = static_cast<double>(serDiff.payloadBytes) /
                      static_cast<double>(ser.payloadBytes);
+  const auto fullVsRaw =
+      static_cast<double>(ser.payloadBytes) / static_cast<double>(rawStructBytes);
+  const auto diffVsRaw =
+      static_cast<double>(serDiff.payloadBytes) / static_cast<double>(rawStructBytes);
   std::cout << std::format("diff/full size ratio: {:.3f}\n", ratio);
+  std::cout << std::format("serialize/raw struct ratio: {:.3f}\n", fullVsRaw);
+  std::cout << std::format("serializeDiff/raw struct ratio: {:.3f}\n", diffVsRaw);
   return 0;
 }

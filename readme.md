@@ -27,3 +27,11 @@ cmake --build build
 ```bash
 ctest --test-dir build --output-on-failure
 ```
+
+## 性能計測
+
+`serialize / serializeDiff / deserialize / deserializeDiff` の速度・サイズをまとめて計測:
+
+```bash
+./build/code_serializer_perf
+```

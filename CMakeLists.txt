@@ -7,13 +7,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(code_serializer)
 
-include_directories(include)
-
-set(src
+add_library(${PROJECT_NAME}_lib
     src/record.cpp
+)
+target_include_directories(${PROJECT_NAME}_lib PUBLIC include)
+
+add_executable(${PROJECT_NAME}
     src/main.cpp
 )
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_lib)
 
-add_executable(${PROJECT_NAME} ${src})
+enable_testing()
+add_executable(${PROJECT_NAME}_test
+    tests/main_test.cpp
+)
+target_link_libraries(${PROJECT_NAME}_test PRIVATE ${PROJECT_NAME}_lib)
+add_test(NAME ${PROJECT_NAME}_test COMMAND ${PROJECT_NAME}_test)
 
 #

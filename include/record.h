@@ -4,8 +4,8 @@
 #pragma once
 
 #include <array>
-#include <list>
 #include <string>
+#include <vector>
 
 namespace record
 {
@@ -53,6 +53,7 @@ public:
 
   // コピー
   virtual void copy([[maybe_unused]] const ValueInterface &other) {}
+  [[nodiscard]] virtual const void *typeTag() const = 0;
   // 各型チェック
   [[nodiscard]] virtual bool isBool() const { return false; }
   [[nodiscard]] virtual bool isSeparator() const { return false; }
@@ -60,12 +61,23 @@ public:
   [[nodiscard]] virtual size_t getArraySize() const { return 1; }
 };
 
+template <class T>
+[[nodiscard]] const T *valueCast(const ValueInterface &other)
+{
+  if (other.typeTag() != T::typeTagValue())
+  {
+    return nullptr;
+  }
+  return static_cast<const T *>(&other);
+}
+
 //
 // 変数をつなげて管理
 //
 class ValueLink
 {
-  std::list<ValueInterface *> list_;
+  using ValueContainer = std::vector<ValueInterface *>;
+  ValueContainer list_;
 
   bool checkTerminate(Serializer &ser);
 
@@ -178,6 +190,13 @@ public:
   ValueVersion(ValueLink &link) { link.add(this); }
   ~ValueVersion() override = default;
 
+  static const void *typeTagValue()
+  {
+    static const int tag = 0;
+    return &tag;
+  }
+  [[nodiscard]] const void *typeTag() const override { return typeTagValue(); }
+
   //
   bool serialize(Serializer &ser) const override;
   bool serializeDiff(Serializer &ser, const ValueInterface &) const override;
@@ -201,10 +220,17 @@ public:
   ValueBool(bool init, ValueLink &link) : val_(init) { link.add(this); }
   ~ValueBool() override = default;
 
+  static const void *typeTagValue()
+  {
+    static const int tag = 0;
+    return &tag;
+  }
+  [[nodiscard]] const void *typeTag() const override { return typeTagValue(); }
+
   //
   [[nodiscard]] bool equal(const ValueInterface &other) const override
   {
-    if (auto *oval = dynamic_cast<const ValueBool *>(&other))
+    if (auto *oval = valueCast<ValueBool>(other))
     {
       return val_ == oval->val_;
     }
@@ -212,7 +238,7 @@ public:
   }
   void copy(const ValueInterface &other) override
   {
-    if (auto *oval = dynamic_cast<const ValueBool *>(&other))
+    if (auto *oval = valueCast<ValueBool>(other))
     {
       val_ = oval->val_;
     }
@@ -254,10 +280,17 @@ public:
   }
   ~ValueString() override = default;
 
+  static const void *typeTagValue()
+  {
+    static const int tag = 0;
+    return &tag;
+  }
+  [[nodiscard]] const void *typeTag() const override { return typeTagValue(); }
+
   //
   [[nodiscard]] bool equal(const ValueInterface &other) const override
   {
-    if (auto *oval = dynamic_cast<const ValueString *>(&other))
+    if (auto *oval = valueCast<ValueString>(other))
     {
       return val_ == oval->val_;
     }
@@ -265,7 +298,7 @@ public:
   }
   void copy(const ValueInterface &other) override
   {
-    if (auto *oval = dynamic_cast<const ValueString *>(&other))
+    if (auto *oval = valueCast<ValueString>(other))
     {
       val_ = oval->val_;
     }
@@ -335,10 +368,17 @@ public:
   Value(NType num, ValueLink &link) : num_(num) { link.add(this); }
   ~Value() override = default;
 
+  static const void *typeTagValue()
+  {
+    static const int tag = 0;
+    return &tag;
+  }
+  [[nodiscard]] const void *typeTag() const override { return typeTagValue(); }
+
   //
   [[nodiscard]] bool equal(const ValueInterface &other) const override
   {
-    if (auto *oval = dynamic_cast<const Value<NType> *>(&other))
+    if (auto *oval = valueCast<Value<NType>>(other))
     {
       return num_ == oval->num_;
     }
@@ -346,7 +386,7 @@ public:
   }
   void copy(const ValueInterface &other) override
   {
-    if (auto *oval = dynamic_cast<const Value<NType> *>(&other))
+    if (auto *oval = valueCast<Value<NType>>(other))
     {
       num_ = oval->num_;
     }
@@ -370,7 +410,7 @@ public:
   bool serializeDiff(Serializer &ser,
                      const ValueInterface &other) const override
   {
-    if (auto *oval = dynamic_cast<const Value<NType> *>(&other))
+    if (auto *oval = valueCast<Value<NType>>(other))
     {
       if constexpr (std::is_signed_v<NType>)
       {
@@ -531,10 +571,17 @@ public:
   ValueArray(NType init, ValueLink &link) : array_{init} { link.add(this); }
   ~ValueArray() override = default;
 
+  static const void *typeTagValue()
+  {
+    static const int tag = 0;
+    return &tag;
+  }
+  [[nodiscard]] const void *typeTag() const override { return typeTagValue(); }
+
   //
   [[nodiscard]] bool equal(const ValueInterface &other) const override
   {
-    if (auto *oval = dynamic_cast<const ValueArray<NType, Size> *>(&other))
+    if (auto *oval = valueCast<ValueArray<NType, Size>>(other))
     {
       for (size_t i = 0; i < Size; i++)
       {
@@ -549,7 +596,7 @@ public:
   }
   void copy(const ValueInterface &other) override
   {
-    if (auto *oval = dynamic_cast<const ValueArray<NType, Size> *>(&other))
+    if (auto *oval = valueCast<ValueArray<NType, Size>>(other))
     {
       array_ = oval->array_;
     }
@@ -588,7 +635,7 @@ public:
   bool serializeDiff(Serializer &ser,
                      const ValueInterface &other) const override
   {
-    if (auto *oval = dynamic_cast<const ValueArray<NType, Size> *>(&other))
+    if (auto *oval = valueCast<ValueArray<NType, Size>>(other))
     {
       if (!writeArrayHeader(ser, Size))
       {

@@ -239,7 +239,7 @@ bool ValueString::serialize(Serializer &ser) const
 bool ValueString::serializeDiff(Serializer &ser,
                                 const ValueInterface &other) const
 {
-  if (const auto *oval = dynamic_cast<const ValueString *>(&other))
+  if (const auto *oval = valueCast<ValueString>(other))
   {
     if (val_ == oval->val_)
     {

@@ -37,3 +37,9 @@ ctest --test-dir build --output-on-failure
 ```
 
 出力にはシリアライズサイズだけでなく、`TestVer2` のオンメモリサイズとの比率も含まれます。
+
+任意で `items` `iterations` `buffer_bytes` を指定可能:
+
+```bash
+./build/code_serializer_perf 512 5000 2097152
+```

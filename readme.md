@@ -9,6 +9,23 @@ C++20 で書かれたバイナリシリアライズ実験用ライブラリ。
 - `examples/main.cpp`: サンプル実行コード
 - `tests/main_test.cpp`: `examples/main.cpp` ベースの挙動テスト
 
+## ValueLink のマスター共有
+
+`ValueLink` はオプションで「レイアウトキー」を受け取り、同じキーを持つ同一レイアウト構造体間で
+メンバー順序のマスター情報を共有できます。
+
+```cpp
+struct MyRecord
+{
+  record::ValueLink link{"MyRecord"};
+  record::Value<uint32_t> id_{0, link};
+  record::ValueString name_{"", link};
+};
+```
+
+同一プロセス内で最初に使われた個体がマスターを構築し、以降の個体はその情報を再利用します。
+キーを指定しない場合は従来どおり個体ごとのリスト管理です。
+
 ## ビルド
 
 ```bash

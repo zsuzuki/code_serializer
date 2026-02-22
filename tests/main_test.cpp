@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -31,6 +32,10 @@ struct Test
   vbits32 bits_{0, valLink};
   vint16_t code_{-2, valLink};
 
+  explicit Test(std::string linkKey = "tests::Test") : valLink(std::move(linkKey))
+  {
+  }
+
   bool serialize(record::Serializer &ser) const { return valLink.serialize(ser); }
   bool serializeDiff(record::Serializer &ser, const Test &other) const
   {
@@ -50,6 +55,7 @@ struct Test
 
 struct TestVer2 : public Test
 {
+  TestVer2() : Test("tests::TestVer2") {}
   vsep ver_1{valLink};
   vuint32_t number_{100, valLink};
 };

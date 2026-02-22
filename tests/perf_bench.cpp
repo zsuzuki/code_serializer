@@ -9,6 +9,7 @@
 #include <format>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -35,6 +36,10 @@ struct Test
   vbits32 bits_{0, valLink};
   vint16_t code_{-2, valLink};
 
+  explicit Test(std::string linkKey = "perf::Test") : valLink(std::move(linkKey))
+  {
+  }
+
   bool serialize(record::Serializer &ser) const { return valLink.serialize(ser); }
   bool serializeDiff(record::Serializer &ser, const Test &other) const
   {
@@ -54,6 +59,7 @@ struct Test
 
 struct TestVer2 : public Test
 {
+  TestVer2() : Test("perf::TestVer2") {}
   vsep ver_1{valLink};
   vuint32_t number_{100, valLink};
 };

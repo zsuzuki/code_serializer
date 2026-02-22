@@ -3,11 +3,21 @@
 //
 #include "record.h"
 #include "serialize.h"
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 namespace record
 {
+
+struct ValueLink::MasterLayout
+{
+  std::vector<size_t> offsets;
+  std::vector<const void *> typeTags;
+};
 
 namespace
 {
@@ -22,6 +32,255 @@ namespace
 [[maybe_unused]] constexpr uint32_t BBOther = 0x3;   // data
 
 } // namespace
+
+void ValueLink::appendMasterMatchedValuesToList()
+{
+  if (!master_)
+  {
+    return;
+  }
+
+  const auto count =
+      std::min(registeredCount_, static_cast<size_t>(master_->offsets.size()));
+  auto base = reinterpret_cast<std::uintptr_t>(this);
+  for (size_t i = 0; i < count; ++i)
+  {
+    list_.push_back(
+        reinterpret_cast<ValueInterface *>(base + master_->offsets.at(i)));
+  }
+  registeredCount_ = list_.size();
+}
+
+void ValueLink::ensureMaster()
+{
+  if (masterKey_.empty())
+  {
+    registeredCount_ = list_.size();
+    return;
+  }
+
+  static std::mutex registryMutex;
+  static std::unordered_map<std::string, std::weak_ptr<const MasterLayout>>
+      registry;
+
+  {
+    std::lock_guard lock{registryMutex};
+    if (!master_)
+    {
+      auto it = registry.find(masterKey_);
+      if (it != registry.end())
+      {
+        master_ = it->second.lock();
+      }
+    }
+
+    if (!master_ && !list_.empty())
+    {
+      auto layout = std::make_shared<MasterLayout>();
+      layout->offsets.reserve(list_.size());
+      layout->typeTags.reserve(list_.size());
+      auto base = reinterpret_cast<std::uintptr_t>(this);
+      for (const auto *val : list_)
+      {
+        auto addr = reinterpret_cast<std::uintptr_t>(val);
+        layout->offsets.push_back(addr - base);
+        layout->typeTags.push_back(val->typeTag());
+      }
+
+      auto it = registry.find(masterKey_);
+      if (it != registry.end())
+      {
+        if (auto existing = it->second.lock())
+        {
+          master_ = existing;
+        }
+      }
+      if (!master_)
+      {
+        master_ = layout;
+        registry[masterKey_] = master_;
+      }
+    }
+  }
+
+  if (!master_)
+  {
+    registeredCount_ = list_.size();
+    return;
+  }
+
+  if (list_.empty())
+  {
+    if (registeredCount_ == 0)
+    {
+      return;
+    }
+    return;
+  }
+
+  if (list_.size() != master_->offsets.size())
+  {
+    // 同じキーに別レイアウトが混ざったのでこの個体は通常モードに戻す
+    master_.reset();
+    registeredCount_ = list_.size();
+    return;
+  }
+
+  auto base = reinterpret_cast<std::uintptr_t>(this);
+  for (size_t i = 0; i < list_.size(); ++i)
+  {
+    auto addr = reinterpret_cast<std::uintptr_t>(list_.at(i));
+    if (addr - base != master_->offsets.at(i) ||
+        list_.at(i)->typeTag() != master_->typeTags.at(i))
+    {
+      master_.reset();
+      registeredCount_ = list_.size();
+      return;
+    }
+  }
+
+  registeredCount_ = master_->offsets.size();
+  list_.clear();
+}
+
+size_t ValueLink::valueCount() const
+{
+  return master_ ? registeredCount_ : list_.size();
+}
+
+ValueInterface *ValueLink::valueAt(size_t index) const
+{
+  if (!master_)
+  {
+    return list_.at(index);
+  }
+  auto base = reinterpret_cast<std::uintptr_t>(const_cast<ValueLink *>(this));
+  return reinterpret_cast<ValueInterface *>(base + master_->offsets.at(index));
+}
+
+void ValueLink::add(ValueInterface *val)
+{
+  if (masterKey_.empty())
+  {
+    list_.push_back(val);
+    registeredCount_ = list_.size();
+    return;
+  }
+
+  ensureMaster();
+  if (master_)
+  {
+    if (registeredCount_ < master_->offsets.size())
+    {
+      auto base = reinterpret_cast<std::uintptr_t>(this);
+      auto addr = reinterpret_cast<std::uintptr_t>(val);
+      if (addr - base == master_->offsets.at(registeredCount_) &&
+          val->typeTag() == master_->typeTags.at(registeredCount_))
+      {
+        registeredCount_++;
+        return;
+      }
+    }
+    appendMasterMatchedValuesToList();
+    master_.reset();
+  }
+
+  list_.push_back(val);
+  registeredCount_ = list_.size();
+}
+
+uint32_t ValueLink::getDataVersion() const
+{
+  const_cast<ValueLink *>(this)->ensureMaster();
+
+  uint32_t version = 0;
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
+  {
+    if (valueAt(i)->isSeparator())
+    {
+      version++;
+    }
+  }
+  return version;
+}
+
+bool ValueLink::equal(const ValueLink &other) const
+{
+  const_cast<ValueLink *>(this)->ensureMaster();
+  auto &rhs = const_cast<ValueLink &>(other);
+  rhs.ensureMaster();
+
+  if (valueCount() != rhs.valueCount())
+  {
+    return false;
+  }
+
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
+  {
+    if (!valueAt(i)->equal(*rhs.valueAt(i)))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+void ValueLink::copy(const ValueLink &other)
+{
+  ensureMaster();
+  auto &rhs = const_cast<ValueLink &>(other);
+  rhs.ensureMaster();
+
+  if (valueCount() != rhs.valueCount())
+  {
+    return;
+  }
+
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
+  {
+    valueAt(i)->copy(*rhs.valueAt(i));
+  }
+}
+
+size_t ValueLink::getTotalBitSize() const
+{
+  const_cast<ValueLink *>(this)->ensureMaster();
+
+  size_t bitSize = ValueInterface::BaseBits;
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
+  {
+    const auto *val = valueAt(i);
+    bitSize += ValueInterface::BaseBits;
+    if (!val->isBool() && !val->isSeparator())
+    {
+      bitSize += ValueInterface::SizeBits;
+      auto singleSize =
+          (val->getByteSize() + ValueInterface::ArraySizeBits) *
+          ValueInterface::ByteBits;
+      auto numarray = val->getArraySize();
+      bitSize += numarray * singleSize;
+      if (numarray > 1)
+      {
+        bitSize += ValueInterface::ByteBits;
+      }
+      else
+      {
+        bitSize += ValueInterface::ByteBits - 1;
+      }
+    }
+  }
+  return bitSize;
+}
+
+size_t ValueLink::needTotalSize() const
+{
+  constexpr auto ByteBits = ValueInterface::ByteBits;
+  return (getTotalBitSize() + ByteBits - 1) / ByteBits;
+}
 
 //
 // 終端チェック
@@ -39,9 +298,13 @@ bool ValueLink::checkTerminate(Serializer &ser)
 //
 bool ValueLink::serialize(Serializer &ser) const
 {
+  const_cast<ValueLink *>(this)->ensureMaster();
+
   auto begPos = ser.tell();
-  for (const auto val : list_)
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
   {
+    const auto val = valueAt(i);
     if (!val->serialize(ser))
     {
       // 失敗したのでポインタもどす
@@ -57,17 +320,20 @@ bool ValueLink::serialize(Serializer &ser) const
 //
 bool ValueLink::serializeDiff(Serializer &ser, const ValueLink &other) const
 {
-  if (list_.size() != other.list_.size())
+  const_cast<ValueLink *>(this)->ensureMaster();
+  auto &rhs = const_cast<ValueLink &>(other);
+  rhs.ensureMaster();
+
+  if (valueCount() != rhs.valueCount())
   {
     return false;
   }
 
   auto begPos = ser.tell();
-  auto beg0 = list_.begin();
-  auto beg1 = other.list_.begin();
-  for (; beg0 != list_.end(); beg0++, beg1++)
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
   {
-    if (!(*beg0)->serializeDiff(ser, **beg1))
+    if (!valueAt(i)->serializeDiff(ser, *rhs.valueAt(i)))
     {
       // 失敗したのでポインタもどす
       ser.seek(begPos);
@@ -82,18 +348,21 @@ bool ValueLink::serializeDiff(Serializer &ser, const ValueLink &other) const
 //
 bool ValueLink::serializeDiffAndCopy(Serializer &ser, const ValueLink &other)
 {
-  if (list_.size() != other.list_.size())
+  ensureMaster();
+  auto &rhs = const_cast<ValueLink &>(other);
+  rhs.ensureMaster();
+
+  if (valueCount() != rhs.valueCount())
   {
     return false;
   }
 
   auto begPos = ser.tell();
-  auto beg0 = list_.begin();
-  auto beg1 = other.list_.begin();
+  const auto count = valueCount();
 #if defined(RECORD_FAST_DIFF_COPY)
-  for (; beg0 != list_.end(); beg0++, beg1++)
+  for (size_t i = 0; i < count; ++i)
   {
-    if (!(*beg0)->serializeDiffAndCopy(ser, **beg1))
+    if (!valueAt(i)->serializeDiffAndCopy(ser, *rhs.valueAt(i)))
     {
       // 失敗したのでポインタもどす
       ser.seek(begPos);
@@ -106,9 +375,9 @@ bool ValueLink::serializeDiffAndCopy(Serializer &ser, const ValueLink &other)
     return false;
   }
 #else
-  for (; beg0 != list_.end(); beg0++, beg1++)
+  for (size_t i = 0; i < count; ++i)
   {
-    if (!(*beg0)->serializeDiff(ser, **beg1))
+    if (!valueAt(i)->serializeDiff(ser, *rhs.valueAt(i)))
     {
       // 失敗したのでポインタもどす
       ser.seek(begPos);
@@ -132,9 +401,13 @@ bool ValueLink::serializeDiffAndCopy(Serializer &ser, const ValueLink &other)
 //
 bool ValueLink::deserialize(Serializer &ser)
 {
+  ensureMaster();
+
   auto begPos = ser.tell();
-  for (const auto val : list_)
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
   {
+    auto *val = valueAt(i);
     auto prevPos = ser.tell();
     if (!val->deserialize(ser))
     {
@@ -158,9 +431,13 @@ bool ValueLink::deserialize(Serializer &ser)
 //
 bool ValueLink::deserializeDiff(Serializer &ser)
 {
+  ensureMaster();
+
   auto begPos = ser.tell();
-  for (const auto val : list_)
+  const auto count = valueCount();
+  for (size_t i = 0; i < count; ++i)
   {
+    auto *val = valueAt(i);
     auto prevPos = ser.tell();
     if (!val->deserializeDiff(ser))
     {

@@ -4,7 +4,11 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace record
@@ -85,68 +89,37 @@ template <class T>
 //
 class ValueLink
 {
+  struct MasterLayout;
   using ValueContainer = std::vector<ValueInterface *>;
   ValueContainer list_;
+  std::shared_ptr<const MasterLayout> master_;
+  std::string masterKey_;
+  size_t registeredCount_ = 0;
+
+  void ensureMaster();
+  void appendMasterMatchedValuesToList();
+  [[nodiscard]] size_t valueCount() const;
+  [[nodiscard]] ValueInterface *valueAt(size_t index) const;
 
   bool checkTerminate(Serializer &ser);
 
 public:
   ValueLink() = default;
+  explicit ValueLink(std::string masterKey) : masterKey_(std::move(masterKey))
+  {
+  }
 
   // 追加
-  void add(ValueInterface *val) { list_.push_back(val); }
+  void add(ValueInterface *val);
 
   // データーバージョン
-  [[nodiscard]] uint32_t getDataVersion() const
-  {
-    uint32_t version = 0;
-    for (const auto *val : list_)
-    {
-      if (val->isSeparator())
-      {
-        version++;
-      }
-    }
-    return version;
-  }
+  [[nodiscard]] uint32_t getDataVersion() const;
 
   // 比較
-  [[nodiscard]] bool equal(const ValueLink &other) const
-  {
-    if (list_.size() != other.list_.size())
-    {
-      return false;
-    }
-
-    auto beg0 = list_.begin();
-    auto beg1 = other.list_.begin();
-    bool result = true;
-    for (; beg0 != list_.end(); beg0++, beg1++)
-    {
-      if (!(*beg0)->equal(**beg1))
-      {
-        result = false;
-        break;
-      }
-    }
-    return result;
-  }
+  [[nodiscard]] bool equal(const ValueLink &other) const;
 
   // コピー
-  void copy(const ValueLink &other)
-  {
-    if (list_.size() != other.list_.size())
-    {
-      return;
-    }
-
-    auto beg0 = list_.begin();
-    auto beg1 = other.list_.begin();
-    for (; beg0 != list_.end(); beg0++, beg1++)
-    {
-      (*beg0)->copy(**beg1);
-    }
-  }
+  void copy(const ValueLink &other);
 
   // シリアライズ
   bool serialize(Serializer &ser) const;
@@ -156,39 +129,9 @@ public:
   bool deserializeDiff(Serializer &ser);
 
   // 必要ビットサイズ
-  [[nodiscard]] size_t getTotalBitSize() const
-  {
-    size_t bitSize = ValueInterface::BaseBits;
-    for (const auto &val : list_)
-    {
-      bitSize += ValueInterface::BaseBits;
-      if (!val->isBool() && !val->isSeparator())
-      {
-        bitSize += ValueInterface::SizeBits;
-        auto singleSize = (val->getByteSize() + ValueInterface::ArraySizeBits) *
-                          ValueInterface::ByteBits;
-        auto numarray = val->getArraySize();
-        bitSize += numarray * singleSize;
-        if (numarray > 1)
-        {
-          // 情報領域分追加(array size)
-          bitSize += ValueInterface::ByteBits;
-        }
-        else
-        {
-          // パディング分(最大7bit)が挟まる可能性がある
-          bitSize += ValueInterface::ByteBits - 1;
-        }
-      }
-    }
-    return bitSize;
-  }
+  [[nodiscard]] size_t getTotalBitSize() const;
   // 必要バイトサイズ
-  [[nodiscard]] size_t needTotalSize() const
-  {
-    constexpr auto ByteBits = ValueInterface::ByteBits;
-    return (getTotalBitSize() + ByteBits - 1) / ByteBits;
-  }
+  [[nodiscard]] size_t needTotalSize() const;
 };
 
 //

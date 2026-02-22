@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <string>
+#include <utility>
 #if __APPLE__
 #include <dispatch/dispatch.h>
 #endif
@@ -74,6 +76,11 @@ struct Test
   vbits32 bits_{0, valLink};
   vint16_t code_{-2, valLink};
 
+  explicit Test(std::string linkKey = "example::Test")
+      : valLink(std::move(linkKey))
+  {
+  }
+
   [[nodiscard]] uint32_t version() const { return valLink.getDataVersion(); }
   [[nodiscard]] size_t size() const { return valLink.needTotalSize(); }
   bool serialize(record::Serializer &ser) const
@@ -94,6 +101,7 @@ struct Test
 //
 struct TestVer2 : public Test
 {
+  TestVer2() : Test("example::TestVer2") {}
   vsep ver_1{valLink};
   vuint32_t number_{100, valLink};
 };

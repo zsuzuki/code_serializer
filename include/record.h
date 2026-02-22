@@ -48,6 +48,15 @@ public:
   // シリアライズ
   virtual bool serialize(Serializer &) const = 0;
   virtual bool serializeDiff(Serializer &, const ValueInterface &) const = 0;
+  virtual bool serializeDiffAndCopy(Serializer &ser, const ValueInterface &other)
+  {
+    if (!serializeDiff(ser, other))
+    {
+      return false;
+    }
+    copy(other);
+    return true;
+  }
   virtual bool deserialize(Serializer &) = 0;
   virtual bool deserializeDiff(Serializer &) = 0;
 
@@ -142,6 +151,7 @@ public:
   // シリアライズ
   bool serialize(Serializer &ser) const;
   bool serializeDiff(Serializer &ser, const ValueLink &other) const;
+  bool serializeDiffAndCopy(Serializer &ser, const ValueLink &other);
   bool deserialize(Serializer &ser);
   bool deserializeDiff(Serializer &ser);
 

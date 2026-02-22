@@ -7,10 +7,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(code_serializer)
 
+option(RECORD_FAST_DIFF_COPY "Enable fast (non-atomic) serializeDiffAndCopy path" OFF)
+
 add_library(${PROJECT_NAME}
     src/record.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_compile_definitions(${PROJECT_NAME}
+    PUBLIC
+      $<$<BOOL:${RECORD_FAST_DIFF_COPY}>:RECORD_FAST_DIFF_COPY>
+)
 
 add_executable(${PROJECT_NAME}_example
     examples/main.cpp

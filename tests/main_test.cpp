@@ -36,6 +36,11 @@ struct Test
   {
     return valLink.serializeDiff(ser, other.valLink);
   }
+  bool serializeDiffAndCopy(record::Serializer &ser, const Test &other)
+  {
+    return valLink.serializeDiffAndCopy(ser, other.valLink);
+  }
+  bool equal(const Test &other) const { return valLink.equal(other.valLink); }
   bool deserialize(record::Serializer &ser) { return valLink.deserialize(ser); }
   bool deserializeDiff(record::Serializer &ser)
   {
@@ -146,6 +151,30 @@ void test_diff_roundtrip()
   assert(diff.bits_() == 0x4U);
 }
 
+void test_diff_and_copy()
+{
+  Test prev;
+  Test next;
+
+  next.enabled_ = true;
+  next.count_ = 321;
+  next.name_ = "NextState";
+  next.age_ = 44;
+  next.bits_ = 0x12;
+
+  record::Serializer ser{10 * 1000};
+  assert(prev.serializeDiffAndCopy(ser, next));
+  assert(prev.equal(next));
+
+  record::Serializer ser2{10 * 1000};
+  assert(prev.serializeDiff(ser2, next));
+  Test applied;
+  applied.valLink.copy(next.valLink);
+  ser2.reset();
+  assert(applied.deserializeDiff(ser2));
+  assert(applied.equal(next));
+}
+
 void test_bitfield_size_migration()
 {
   std::array<Bit1, 10> bittest1{};
@@ -201,6 +230,7 @@ int main()
   test_bool_io();
   test_cross_version_serialize_deserialize();
   test_diff_roundtrip();
+  test_diff_and_copy();
   test_bitfield_size_migration();
   return 0;
 }

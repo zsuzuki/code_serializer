@@ -40,6 +40,11 @@ struct Test
   {
     return valLink.serializeDiff(ser, other.valLink);
   }
+  bool serializeDiffAndCopy(record::Serializer &ser, const Test &other)
+  {
+    return valLink.serializeDiffAndCopy(ser, other.valLink);
+  }
+  void copy(const Test &other) { valLink.copy(other.valLink); }
   bool deserialize(record::Serializer &ser) { return valLink.deserialize(ser); }
   bool deserializeDiff(record::Serializer &ser)
   {
@@ -165,6 +170,86 @@ BenchResult runSerializeDiffBench(const std::vector<TestVer2> &base,
   return {"serializeDiff", payloadSize, total};
 }
 
+BenchResult runSerializeDiffAndCopyBench(const std::vector<TestVer2> &base,
+                                         const std::vector<TestVer2> &next,
+                                         size_t iterations, size_t bufferBytes)
+{
+  assert(base.size() == next.size());
+  std::vector<TestVer2> current(base.size());
+  for (size_t i = 0; i < current.size(); ++i)
+  {
+    setupSample(current[i], i, 1);
+  }
+  record::Serializer ser{bufferBytes};
+  size_t payloadSize = 0;
+  const auto total = measureNs(
+      [&]()
+      {
+        for (size_t iter = 0; iter < iterations; ++iter)
+        {
+          ser.reset();
+          const auto &target = (iter % 2 == 0) ? next : base;
+          for (size_t i = 0; i < current.size(); ++i)
+          {
+            assert(current[i].serializeDiffAndCopy(ser, target[i]));
+          }
+          payloadSize = ser.size();
+        }
+      });
+  return {"serializeDiff+copy", payloadSize, total};
+}
+
+inline void polluteCache(std::vector<uint8_t> &buffer, uint8_t tag)
+{
+  // Touch one byte per cache line to evict hot data from CPU caches.
+  for (size_t i = 0; i < buffer.size(); i += 64)
+  {
+    buffer[i] ^= tag;
+  }
+}
+
+BenchResult runSerializeDiffThenCopyBench(const std::vector<TestVer2> &base,
+                                          const std::vector<TestVer2> &next,
+                                          size_t iterations, size_t bufferBytes,
+                                          bool withCachePollution)
+{
+  assert(base.size() == next.size());
+  std::vector<TestVer2> current(base.size());
+  for (size_t i = 0; i < current.size(); ++i)
+  {
+    setupSample(current[i], i, 1);
+  }
+
+  // 1MB cache trash buffer to reduce cache locality between diff and copy.
+  std::vector<uint8_t> cacheTrash(withCachePollution ? (1 * 1024 * 1024) : 0, 0);
+
+  record::Serializer ser{bufferBytes};
+  size_t payloadSize = 0;
+  const auto total = measureNs(
+      [&]()
+      {
+        for (size_t iter = 0; iter < iterations; ++iter)
+        {
+          ser.reset();
+          const auto &target = (iter % 2 == 0) ? next : base;
+          for (size_t i = 0; i < current.size(); ++i)
+          {
+            assert(current[i].serializeDiff(ser, target[i]));
+            current[i].copy(target[i]);
+          }
+          if (withCachePollution && (iter % 8 == 0))
+          {
+            polluteCache(cacheTrash, static_cast<uint8_t>(iter));
+          }
+          payloadSize = ser.size();
+        }
+      });
+
+  const auto name = withCachePollution ? "serializeDiff+copy(split+pollute)"
+                                       : "serializeDiff+copy(split)";
+  return {name, payloadSize, total};
+}
+
 BenchResult runDeserializeDiffBench(const std::vector<TestVer2> &base,
                                     const std::vector<TestVer2> &next,
                                     size_t iterations, size_t bufferBytes)
@@ -272,9 +357,19 @@ int main(int argc, char **argv)
   std::vector<TestVer2> base(itemCount);
   std::vector<TestVer2> next(itemCount);
   prepareDataset(base, next);
+  std::vector<TestVer2> baseForDiffCopy(itemCount);
+  std::vector<TestVer2> nextForDiffCopy(itemCount);
+  prepareDataset(baseForDiffCopy, nextForDiffCopy);
 
   const auto ser = runSerializeBench(base, iterations, bufferBytes);
   const auto serDiff = runSerializeDiffBench(base, next, iterations, bufferBytes);
+  const auto serDiffCopy =
+      runSerializeDiffAndCopyBench(baseForDiffCopy, nextForDiffCopy, iterations,
+                                   bufferBytes);
+  const auto serDiffCopySplit = runSerializeDiffThenCopyBench(
+      baseForDiffCopy, nextForDiffCopy, iterations, bufferBytes, false);
+  const auto serDiffCopySplitPollute = runSerializeDiffThenCopyBench(
+      baseForDiffCopy, nextForDiffCopy, iterations, bufferBytes, true);
   const auto des = runDeserializeBench(base, iterations, bufferBytes);
   const auto desDiff =
       runDeserializeDiffBench(base, next, iterations, bufferBytes);
@@ -286,6 +381,9 @@ int main(int argc, char **argv)
   std::cout << std::format("raw struct total size={} bytes\n", rawStructBytes);
   printResult(ser, itemCount, iterations);
   printResult(serDiff, itemCount, iterations);
+  printResult(serDiffCopy, itemCount, iterations);
+  printResult(serDiffCopySplit, itemCount, iterations);
+  printResult(serDiffCopySplitPollute, itemCount, iterations);
   printResult(des, itemCount, iterations);
   printResult(desDiff, itemCount, iterations);
 
@@ -295,8 +393,12 @@ int main(int argc, char **argv)
       static_cast<double>(ser.payloadBytes) / static_cast<double>(rawStructBytes);
   const auto diffVsRaw =
       static_cast<double>(serDiff.payloadBytes) / static_cast<double>(rawStructBytes);
+  const auto diffCopyVsRaw = static_cast<double>(serDiffCopy.payloadBytes) /
+                             static_cast<double>(rawStructBytes);
   std::cout << std::format("diff/full size ratio: {:.3f}\n", ratio);
   std::cout << std::format("serialize/raw struct ratio: {:.3f}\n", fullVsRaw);
   std::cout << std::format("serializeDiff/raw struct ratio: {:.3f}\n", diffVsRaw);
+  std::cout << std::format("serializeDiff+copy/raw struct ratio: {:.3f}\n",
+                           diffCopyVsRaw);
   return 0;
 }

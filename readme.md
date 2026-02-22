@@ -16,6 +16,13 @@ cmake -S . -B build
 cmake --build build
 ```
 
+`serializeDiffAndCopy` はデフォルトで安全(atomic)実装です。高速(非atomic)版を使う場合:
+
+```bash
+cmake -S . -B build -DRECORD_FAST_DIFF_COPY=ON
+cmake --build build
+```
+
 ## 実行
 
 ```bash

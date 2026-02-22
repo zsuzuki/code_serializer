@@ -78,6 +78,56 @@ bool ValueLink::serializeDiff(Serializer &ser, const ValueLink &other) const
 }
 
 //
+// 差分保存して成功時にコピー
+//
+bool ValueLink::serializeDiffAndCopy(Serializer &ser, const ValueLink &other)
+{
+  if (list_.size() != other.list_.size())
+  {
+    return false;
+  }
+
+  auto begPos = ser.tell();
+  auto beg0 = list_.begin();
+  auto beg1 = other.list_.begin();
+#if defined(RECORD_FAST_DIFF_COPY)
+  for (; beg0 != list_.end(); beg0++, beg1++)
+  {
+    if (!(*beg0)->serializeDiffAndCopy(ser, **beg1))
+    {
+      // 失敗したのでポインタもどす
+      ser.seek(begPos);
+      return false;
+    }
+  }
+  if (!ser.writeBits(BBZero, ValueInterface::BaseBits))
+  {
+    ser.seek(begPos);
+    return false;
+  }
+#else
+  for (; beg0 != list_.end(); beg0++, beg1++)
+  {
+    if (!(*beg0)->serializeDiff(ser, **beg1))
+    {
+      // 失敗したのでポインタもどす
+      ser.seek(begPos);
+      return false;
+    }
+  }
+  if (!ser.writeBits(BBZero, ValueInterface::BaseBits))
+  {
+    ser.seek(begPos);
+    return false;
+  }
+
+  // 出力成功後にのみ現在値を更新(atomic behavior)
+  copy(other);
+#endif
+  return true;
+}
+
+//
 // 丸ごと更新
 //
 bool ValueLink::deserialize(Serializer &ser)

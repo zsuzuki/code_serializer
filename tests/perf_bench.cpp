@@ -9,7 +9,6 @@
 #include <format>
 #include <iostream>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace
@@ -36,7 +35,9 @@ struct Test
   vbits32 bits_{0, valLink};
   vint16_t code_{-2, valLink};
 
-  explicit Test(std::string linkKey = "perf::Test") : valLink(std::move(linkKey))
+  template <class LinkTag = Test>
+  explicit Test(std::in_place_type_t<LinkTag> tag = std::in_place_type<LinkTag>)
+      : valLink(tag)
   {
   }
 
@@ -59,7 +60,7 @@ struct Test
 
 struct TestVer2 : public Test
 {
-  TestVer2() : Test("perf::TestVer2") {}
+  TestVer2() : Test(std::in_place_type<TestVer2>) {}
   vsep ver_1{valLink};
   vuint32_t number_{100, valLink};
 };

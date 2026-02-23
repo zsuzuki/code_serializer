@@ -8,7 +8,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace record
@@ -93,8 +94,15 @@ class ValueLink
   using ValueContainer = std::vector<ValueInterface *>;
   ValueContainer list_;
   std::shared_ptr<const MasterLayout> master_;
-  std::string masterKey_;
+  const void *masterToken_ = nullptr;
   size_t registeredCount_ = 0;
+
+  template <class MasterTag>
+  static const void *masterTokenValue()
+  {
+    static const int token = 0;
+    return &token;
+  }
 
   void ensureMaster();
   void appendMasterMatchedValuesToList();
@@ -105,7 +113,9 @@ class ValueLink
 
 public:
   ValueLink() = default;
-  explicit ValueLink(std::string masterKey) : masterKey_(std::move(masterKey))
+  template <class MasterTag>
+  explicit ValueLink(std::in_place_type_t<MasterTag>)
+      : masterToken_(masterTokenValue<MasterTag>())
   {
   }
 

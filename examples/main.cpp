@@ -6,8 +6,6 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
-#include <string>
-#include <utility>
 #if __APPLE__
 #include <dispatch/dispatch.h>
 #endif
@@ -76,8 +74,9 @@ struct Test
   vbits32 bits_{0, valLink};
   vint16_t code_{-2, valLink};
 
-  explicit Test(std::string linkKey = "example::Test")
-      : valLink(std::move(linkKey))
+  template <class LinkTag = Test>
+  explicit Test(std::in_place_type_t<LinkTag> tag = std::in_place_type<LinkTag>)
+      : valLink(tag)
   {
   }
 
@@ -101,7 +100,7 @@ struct Test
 //
 struct TestVer2 : public Test
 {
-  TestVer2() : Test("example::TestVer2") {}
+  TestVer2() : Test(std::in_place_type<TestVer2>) {}
   vsep ver_1{valLink};
   vuint32_t number_{100, valLink};
 };
